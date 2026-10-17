@@ -1306,6 +1306,19 @@
         word-break: break-word;
       }
       .services-bar { grid-template-columns: 1fr; }
+      .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+        padding: 2.5rem 0;
+      }
+      .stats-grid::before { display: none; }
+      .showcase-bottom-row {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+        text-align: center;
+      }
+      .showcase-info-block { text-align: left; }
     }
   </style>
 </head>
@@ -1814,7 +1827,7 @@
           <span>LeetCode</span>
           <span style="color: var(--accent-orange);">↗</span>
         </a>
-        <a href="https://instagram.com/" target="_blank" rel="noopener noreferrer" class="social-pill">
+        <a href="https://instagram.com/deepak.06060" target="_blank" rel="noopener noreferrer" class="social-pill">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;">
             <defs>
               <linearGradient id="ig-grad" x1="0%" y1="100%" x2="100%" y2="0%">
@@ -1880,20 +1893,23 @@
       }
 
       let lastWindowWidth = window.innerWidth;
+      let lastWindowHeight = window.innerHeight;
       function resizeCanvas(force = false) {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const w = window.innerWidth;
         const h = window.innerHeight;
+        const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (w <= 1024);
 
-        // On mobile, scrolling shows/hides address bar changing innerHeight but not innerWidth.
-        // Avoid tearing / jarring re-allocations unless width changes or forced.
-        if (!force && w === lastWindowWidth && canvas.width > 0) {
+        // On mobile touch devices, ignore vertical-only resize caused by address bar hide/show
+        if (!force && isMobile && w === lastWindowWidth && Math.abs(h - lastWindowHeight) < 140 && canvas.width > 0) {
           return;
         }
-        lastWindowWidth = w;
 
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
+        lastWindowWidth = w;
+        lastWindowHeight = h;
+
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
         canvas.style.width = w + 'px';
         canvas.style.height = h + 'px';
         lastDrawnFrame = -1;
@@ -2062,9 +2078,16 @@
       window.addEventListener('touchstart', updateTargetFrame, { passive: true });
 
       function animationLoop() {
+        const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        const lerpFactor = isTouch ? 0.25 : 0.18;
         const diff = targetFrame - currentFrame;
-        // Faster interpolation for touch screens so image frames stay in sync with finger swipe
-        currentFrame += diff * 0.25;
+        
+        // Snap when very close to avoid unnecessary redraw cycles
+        if (Math.abs(diff) < 0.02) {
+          currentFrame = targetFrame;
+        } else {
+          currentFrame += diff * lerpFactor;
+        }
 
         const roundedFrame = Math.round(currentFrame);
         if (roundedFrame !== lastDrawnFrame) {
