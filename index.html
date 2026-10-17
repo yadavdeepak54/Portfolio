@@ -44,16 +44,19 @@
       width: 100%;
       overflow-x: hidden;
       scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
     }
 
     body {
       width: 100%;
       min-height: 100vh;
+      min-height: 100dvh;
       background-color: var(--bg-dark);
       color: var(--text-main);
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* Fixed full-screen background canvas */
@@ -62,10 +65,14 @@
       top: 0;
       left: 0;
       width: 100vw;
+      width: 100dvw;
       height: 100vh;
+      height: 100dvh;
       display: block;
       z-index: 1;
       pointer-events: none;
+      touch-action: pan-y;
+      will-change: transform;
     }
 
     /* Scroll track container */
@@ -73,6 +80,7 @@
       position: relative;
       z-index: 2;
       width: 100%;
+      touch-action: pan-y;
     }
 
     /* Navbar */
@@ -1282,11 +1290,22 @@
       .hero-main-grid { grid-template-columns: 1fr; gap: 2rem; }
       .behind-grid { grid-template-columns: 1fr; gap: 2rem; }
       .services-bar { grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
-      .portfolio-grid { grid-template-columns: 1fr; gap: 1.5rem; }
+      .portfolio-grid { grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
       .workflow-grid-header { grid-template-columns: 1fr; gap: 2rem; }
       .swatch-cards-container { grid-template-columns: 1fr; gap: 2rem; }
       .palette-grid-wrapper { min-height: auto; }
       .color-ring-container { display: none; }
+    }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .portfolio-grid { grid-template-columns: 1fr; gap: 1.25rem; }
+      .giant-headline {
+        font-size: clamp(2.8rem, 13vw, 5rem);
+        white-space: normal;
+        word-break: break-word;
+      }
+      .services-bar { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -1860,12 +1879,23 @@
         }
       }
 
-      function resizeCanvas() {
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = window.innerWidth * dpr;
-        canvas.height = window.innerHeight * dpr;
-        canvas.style.width = window.innerWidth + 'px';
-        canvas.style.height = window.innerHeight + 'px';
+      let lastWindowWidth = window.innerWidth;
+      function resizeCanvas(force = false) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+
+        // On mobile, scrolling shows/hides address bar changing innerHeight but not innerWidth.
+        // Avoid tearing / jarring re-allocations unless width changes or forced.
+        if (!force && w === lastWindowWidth && canvas.width > 0) {
+          return;
+        }
+        lastWindowWidth = w;
+
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
         lastDrawnFrame = -1;
       }
 
@@ -1873,7 +1903,13 @@
         resizeCanvas();
         updateTargetFrame();
       });
-      resizeCanvas();
+      window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+          resizeCanvas(true);
+          updateTargetFrame();
+        }, 150);
+      });
+      resizeCanvas(true);
 
       function getFrameUrl(index) {
         const paddedIndex = String(index).padStart(3, '0');
@@ -2007,12 +2043,15 @@
 
       function updateTargetFrame() {
         const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        const scrollElem = document.getElementById('scroll-container');
+        const containerH = scrollElem ? scrollElem.getBoundingClientRect().height : 0;
         const totalHeight = Math.max(
-          document.body.scrollHeight,
-          document.documentElement.scrollHeight,
-          document.getElementById('scroll-container').getBoundingClientRect().height
+          document.body.scrollHeight || 0,
+          document.documentElement.scrollHeight || 0,
+          containerH
         );
-        const maxScroll = Math.max(1, totalHeight - window.innerHeight);
+        const viewH = window.innerHeight || document.documentElement.clientHeight || 1;
+        const maxScroll = Math.max(1, totalHeight - viewH);
         const scrollFraction = Math.max(0, Math.min(1, scrollTop / maxScroll));
         targetFrame = scrollFraction * (TOTAL_FRAMES - 1);
       }
@@ -2020,9 +2059,12 @@
       window.addEventListener('scroll', updateTargetFrame, { passive: true });
       window.addEventListener('wheel', updateTargetFrame, { passive: true });
       window.addEventListener('touchmove', updateTargetFrame, { passive: true });
+      window.addEventListener('touchstart', updateTargetFrame, { passive: true });
 
       function animationLoop() {
-        currentFrame += (targetFrame - currentFrame) * 0.2;
+        const diff = targetFrame - currentFrame;
+        // Faster interpolation for touch screens so image frames stay in sync with finger swipe
+        currentFrame += diff * 0.25;
 
         const roundedFrame = Math.round(currentFrame);
         if (roundedFrame !== lastDrawnFrame) {
