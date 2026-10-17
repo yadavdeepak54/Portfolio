@@ -11,6 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
   <link href="https://fonts.cdnfonts.com/css/rockybilly" rel="stylesheet">
+  
+  <!-- Preload poster frame -->
+  <link rel="preload" as="image" href="ezgif-frame-001.webp" type="image/webp">
 
   <style>
     @font-face {
@@ -1908,7 +1911,7 @@
     (function () {
       const TOTAL_FRAMES = 240;
       const FRAME_PREFIX = 'ezgif-frame-';
-      const FRAME_EXT = '.png';
+      const FRAME_EXT = '.webp';
 
       const canvas = document.getElementById('hero-canvas');
       const ctx = canvas.getContext('2d');
@@ -1937,7 +1940,6 @@
         const h = window.innerHeight;
         const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (w <= 1024);
 
-        // On mobile touch devices, ignore vertical-only resize caused by address bar hide/show
         if (!force && isMobile && w === lastWindowWidth && Math.abs(h - lastWindowHeight) < 140 && canvas.width > 0) {
           return;
         }
@@ -1974,6 +1976,14 @@
         
         let img = images[frameIdx];
         if (!img || !img.complete || img.naturalWidth === 0) {
+          // Immediately prioritize and load this requested frame and adjacent frames
+          loadFrame(frameIdx);
+          for (let r = 1; r <= 3; r++) {
+            if (frameIdx + r < TOTAL_FRAMES) loadFrame(frameIdx + r);
+            if (frameIdx - r >= 0) loadFrame(frameIdx - r);
+          }
+
+          // Fallback to nearest loaded frame for zero-latency visual continuity
           for (let i = frameIdx - 1; i >= 0; i--) {
             if (images[i] && images[i].complete && images[i].naturalWidth > 0) {
               img = images[i];
@@ -2003,11 +2013,8 @@
 
         let drawW, drawH, drawX, drawY;
 
-        // Adaptive Scaling: On desktop (landscape), contain mode preserves head visibility.
-        // On mobile / tall screens (portrait), cover mode ensures the animated background covers the ENTIRE viewport height without black letterboxing.
         const isMobileScreen = cw <= 1024 || canvasRatio < 1;
         if (isMobileScreen) {
-          // Cover mode: fill the entire screen area
           if (canvasRatio > imgRatio) {
             drawW = cw;
             drawH = cw / imgRatio;
@@ -2020,7 +2027,6 @@
             drawY = 0;
           }
         } else {
-          // Desktop landscape: contain mode centered
           if (canvasRatio > imgRatio) {
             drawH = ch;
             drawW = ch * imgRatio;
@@ -2041,9 +2047,11 @@
       }
 
       function loadFrame(i) {
+        if (i < 0 || i >= TOTAL_FRAMES) return null;
         if (images[i]) return images[i];
 
         const img = new Image();
+        img.decoding = 'async';
         images[i] = img;
 
         img.onload = () => {
@@ -2052,18 +2060,19 @@
           loaderText.textContent = `Loading ${percent}%`;
           loaderFill.style.width = `${percent}%`;
 
+          // If this was the frame we need or the initial frame, schedule a draw
           if (Math.round(currentFrame) === i || lastDrawnFrame === -1) {
             lastDrawnFrame = -1;
           }
 
-          if (loadedCount >= 10) {
+          if (loadedCount >= 5) {
             hideLoader();
           }
         };
 
         img.onerror = () => {
           loadedCount++;
-          if (loadedCount >= 10) hideLoader();
+          if (loadedCount >= 5) hideLoader();
         };
 
         img.src = getFrameUrl(i + 1);
@@ -2071,44 +2080,60 @@
       }
 
       function startProgressiveLoading() {
-        function triggerBatchLoading() {
-          renderFrame(currentFrame);
+        // Step 1: Preload immediate poster frame and render it
+        const f1 = loadFrame(0);
+        function onInitialLoaded() {
+          renderFrame(0);
           hideLoader();
-          
-          const keyframeIndices = [];
-          for (let i = 0; i < TOTAL_FRAMES; i += 4) {
-            keyframeIndices.push(i);
-          }
-          if (!keyframeIndices.includes(TOTAL_FRAMES - 1)) {
-            keyframeIndices.push(TOTAL_FRAMES - 1);
-          }
-
-          let keyIdx = 0;
-          function loadNextKeyframe() {
-            if (keyIdx < keyframeIndices.length) {
-              const idx = keyframeIndices[keyIdx++];
-              loadFrame(idx);
-              setTimeout(loadNextKeyframe, 10);
-            } else {
-              let remainingIdx = 0;
-              function loadNextRemaining() {
-                if (remainingIdx < TOTAL_FRAMES) {
-                  loadFrame(remainingIdx++);
-                  setTimeout(loadNextRemaining, 10);
-                }
-              }
-              loadNextRemaining();
-            }
-          }
-          loadNextKeyframe();
+          loadSpreadKeyframes();
         }
 
-        const f1 = loadFrame(0);
-        if (f1.complete) {
-          triggerBatchLoading();
-        } else {
-          f1.onload = triggerBatchLoading;
-          f1.onerror = triggerBatchLoading;
+        if (f1 && f1.complete) {
+          onInitialLoaded();
+        } else if (f1) {
+          f1.onload = onInitialLoaded;
+          f1.onerror = onInitialLoaded;
+        }
+
+        // Step 2: Prioritize keyframes evenly spread across full sequence
+        function loadSpreadKeyframes() {
+          const keyframes = [];
+          for (let i = 0; i < TOTAL_FRAMES; i += 4) {
+            keyframes.push(i);
+          }
+          if (!keyframes.includes(TOTAL_FRAMES - 1)) {
+            keyframes.push(TOTAL_FRAMES - 1);
+          }
+
+          let kIdx = 0;
+          function loadNextKey() {
+            if (kIdx < keyframes.length) {
+              loadFrame(keyframes[kIdx++]);
+              setTimeout(loadNextKey, 8);
+            } else {
+              loadRemainingInSequence();
+            }
+          }
+          loadNextKey();
+        }
+
+        // Step 3: Efficiently load remaining in-between frames in background
+        function loadRemainingInSequence() {
+          let rIdx = 0;
+          function loadNextChunk() {
+            let processed = 0;
+            while (rIdx < TOTAL_FRAMES && processed < 2) {
+              if (!images[rIdx]) {
+                loadFrame(rIdx);
+                processed++;
+              }
+              rIdx++;
+            }
+            if (rIdx < TOTAL_FRAMES) {
+              setTimeout(loadNextChunk, 15);
+            }
+          }
+          loadNextChunk();
         }
       }
 

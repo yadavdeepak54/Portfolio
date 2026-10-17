@@ -15,7 +15,8 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon',
   '.json': 'application/json',
   '.woff': 'font/woff',
-  '.woff2': 'font/woff2'
+  '.woff2': 'font/woff2',
+  '.webp': 'image/webp'
 };
 
 function createServer(port) {
