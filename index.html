@@ -72,6 +72,10 @@
       z-index: 1;
       pointer-events: none;
       touch-action: pan-y;
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
       will-change: transform;
     }
 
@@ -1320,6 +1324,39 @@
       }
       .showcase-info-block { text-align: left; }
     }
+
+    /* Target mobile screens: 430px, 390px, 375px, 320px */
+    @media (max-width: 480px) {
+      .navbar { padding: 0 1rem; height: 70px; }
+      .section-block { padding: 4.5rem 1rem 1.75rem 1rem; }
+      .display-title { font-size: clamp(2.2rem, 10vw, 3.2rem); }
+      .hero-right-card { padding: 1.5rem 1.2rem; }
+      .hero-btn-group { flex-direction: column; width: 100%; gap: 0.75rem; }
+      .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+      .stat-number { font-size: clamp(3rem, 14vw, 4.5rem); }
+      .giant-headline { font-size: clamp(2.4rem, 14vw, 3.8rem); margin: 1.2rem 0; }
+      .social-links-bar { gap: 0.6rem; }
+      .social-pill { padding: 0.45rem 0.85rem; font-size: 0.8rem; }
+    }
+
+    @media (max-width: 360px) {
+      /* Extra small devices (320px) */
+      .navbar { padding: 0 0.75rem; }
+      .section-block { padding: 4rem 0.75rem 1.5rem 0.75rem; }
+      .brand-logo { font-size: 1.25rem; }
+      .btn-touch { padding: 0.5rem 1rem; font-size: 0.8rem; }
+      .giant-headline { font-size: 2.2rem; }
+    }
+
+    /* Accessibility: Respect Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1966,17 +2003,35 @@
 
         let drawW, drawH, drawX, drawY;
 
-        // Contain / Full Visibility mode (Ensures head and entire image are 100% visible)
-        if (canvasRatio > imgRatio) {
-          drawH = ch;
-          drawW = ch * imgRatio;
-          drawX = (cw - drawW) / 2;
-          drawY = 0;
+        // Adaptive Scaling: On desktop (landscape), contain mode preserves head visibility.
+        // On mobile / tall screens (portrait), cover mode ensures the animated background covers the ENTIRE viewport height without black letterboxing.
+        const isMobileScreen = cw <= 1024 || canvasRatio < 1;
+        if (isMobileScreen) {
+          // Cover mode: fill the entire screen area
+          if (canvasRatio > imgRatio) {
+            drawW = cw;
+            drawH = cw / imgRatio;
+            drawX = 0;
+            drawY = (ch - drawH) / 2;
+          } else {
+            drawH = ch;
+            drawW = ch * imgRatio;
+            drawX = (cw - drawW) / 2;
+            drawY = 0;
+          }
         } else {
-          drawW = cw;
-          drawH = cw / imgRatio;
-          drawX = 0;
-          drawY = 0; // Top-aligned so head is never cropped
+          // Desktop landscape: contain mode centered
+          if (canvasRatio > imgRatio) {
+            drawH = ch;
+            drawW = ch * imgRatio;
+            drawX = (cw - drawW) / 2;
+            drawY = 0;
+          } else {
+            drawW = cw;
+            drawH = cw / imgRatio;
+            drawX = 0;
+            drawY = 0;
+          }
         }
 
         ctx.imageSmoothingEnabled = true;
@@ -2057,6 +2112,8 @@
         }
       }
 
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
       function updateTargetFrame() {
         const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
         const scrollElem = document.getElementById('scroll-container');
@@ -2076,17 +2133,25 @@
       window.addEventListener('wheel', updateTargetFrame, { passive: true });
       window.addEventListener('touchmove', updateTargetFrame, { passive: true });
       window.addEventListener('touchstart', updateTargetFrame, { passive: true });
+      window.addEventListener('touchend', updateTargetFrame, { passive: true });
 
       function animationLoop() {
-        const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-        const lerpFactor = isTouch ? 0.25 : 0.18;
-        const diff = targetFrame - currentFrame;
-        
-        // Snap when very close to avoid unnecessary redraw cycles
-        if (Math.abs(diff) < 0.02) {
+        // Continuous sync so mobile inertial flick scrolling keeps updating targetFrame
+        updateTargetFrame();
+
+        if (prefersReducedMotion.matches) {
+          // Skip animated frame interpolation if user prefers reduced motion
           currentFrame = targetFrame;
         } else {
-          currentFrame += diff * lerpFactor;
+          const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+          const lerpFactor = isTouch ? 0.35 : 0.18;
+          const diff = targetFrame - currentFrame;
+          
+          if (Math.abs(diff) < 0.01) {
+            currentFrame = targetFrame;
+          } else {
+            currentFrame += diff * lerpFactor;
+          }
         }
 
         const roundedFrame = Math.round(currentFrame);
