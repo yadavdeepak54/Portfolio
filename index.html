@@ -2115,17 +2115,28 @@
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
       function updateTargetFrame() {
-        const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        const scrollTop = Math.max(0, window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0);
+        const docElem = document.documentElement;
+        const bodyElem = document.body;
         const scrollElem = document.getElementById('scroll-container');
-        const containerH = scrollElem ? scrollElem.getBoundingClientRect().height : 0;
-        const totalHeight = Math.max(
-          document.body.scrollHeight || 0,
-          document.documentElement.scrollHeight || 0,
-          containerH
+        
+        const scrollHeight = Math.max(
+          bodyElem ? bodyElem.scrollHeight : 0,
+          bodyElem ? bodyElem.offsetHeight : 0,
+          docElem ? docElem.clientHeight : 0,
+          docElem ? docElem.scrollHeight : 0,
+          docElem ? docElem.offsetHeight : 0,
+          scrollElem ? Math.ceil(scrollElem.getBoundingClientRect().height) : 0
         );
-        const viewH = window.innerHeight || document.documentElement.clientHeight || 1;
-        const maxScroll = Math.max(1, totalHeight - viewH);
-        const scrollFraction = Math.max(0, Math.min(1, scrollTop / maxScroll));
+        
+        const clientHeight = window.innerHeight || docElem.clientHeight || 1;
+        const maxScroll = Math.max(1, scrollHeight - clientHeight);
+        
+        let scrollFraction = scrollTop / maxScroll;
+        if (scrollFraction < 0.0001) scrollFraction = 0;
+        if (scrollFraction > 0.999) scrollFraction = 1;
+        scrollFraction = Math.max(0, Math.min(1, scrollFraction));
+        
         targetFrame = scrollFraction * (TOTAL_FRAMES - 1);
       }
 
