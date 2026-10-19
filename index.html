@@ -1419,12 +1419,20 @@
     }
 
     /* Responsive adjustments */
+    @media (max-width: 1280px) {
+      .navbar { padding: 0 2rem; }
+      .section-block { padding: 6.5rem 2rem 3rem 2rem; }
+      .swatch-cards-container { gap: 2.5rem 10rem; }
+      .hero-main-grid { gap: 2.5rem; }
+      .behind-grid { gap: 3rem; }
+    }
+
     @media (max-width: 1024px) {
       .navbar { padding: 0 1.5rem; }
       .section-block { padding: 6rem 1.5rem 3rem 1.5rem; }
       .trust-section { padding: 2rem 1.5rem; }
       .trust-bar { padding: 1.2rem 1.5rem; }
-      .hero-main-grid { grid-template-columns: 1fr; gap: 2rem; }
+      .hero-main-grid { grid-template-columns: 1fr; gap: 2.5rem; }
       .behind-grid { grid-template-columns: 1fr; gap: 2.5rem; }
       .services-bar { grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
       .portfolio-grid { grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
@@ -1433,6 +1441,7 @@
       .palette-grid-wrapper { min-height: auto; }
       .color-ring-container { display: none; }
       .brand-logos { gap: 2.5rem; }
+      .centered-portrait-wrapper { width: 220px; height: 220px; }
     }
 
     @media (max-width: 868px) {
@@ -1501,6 +1510,8 @@
         word-break: break-word;
         margin: 1.5rem 0;
       }
+
+      .centered-portrait-wrapper { width: 180px; height: 180px; }
 
       /* Services bar */
       .services-bar {
@@ -1643,6 +1654,7 @@
       .stat-number { font-size: clamp(3rem, 14vw, 4.5rem); }
       .stat-desc { font-size: 1rem; }
       .giant-headline { font-size: clamp(2.4rem, 14vw, 3.8rem); margin: 1.2rem 0; }
+      .centered-portrait-wrapper { width: 150px; height: 150px; }
       .social-links-bar { gap: 0.6rem; }
       .social-pill { padding: 0.45rem 0.85rem; font-size: 0.8rem; }
       .swatch-card { padding: 1.2rem; }
@@ -1673,6 +1685,7 @@
       .menu-toggle-btn { width: 38px; height: 38px; }
       .display-title { font-size: 2.1rem; }
       .giant-headline { font-size: 2.1rem; }
+      .centered-portrait-wrapper { width: 130px; height: 130px; }
       .social-pill { padding: 0.4rem 0.75rem; font-size: 0.75rem; }
       .workflow-step-pill { font-size: 0.78rem; padding: 0.5rem 0.8rem; }
       .growth-title { font-size: 1.85rem; }
@@ -2357,44 +2370,105 @@
         const cw = canvas.width;
         const ch = canvas.height;
 
-        ctx.fillStyle = '#09090B';
-        ctx.fillRect(0, 0, cw, ch);
-
-        const imgRatio = img.naturalWidth / img.naturalHeight;
+        const nw = img.naturalWidth || 1280;
+        const nh = img.naturalHeight || 720;
+        const imgRatio = nw / nh;
         const canvasRatio = cw / ch;
 
-        let drawW, drawH, drawX, drawY;
-
-        const isMobileScreen = cw <= 1024 || canvasRatio < 1;
-        if (isMobileScreen) {
-          if (canvasRatio > imgRatio) {
-            drawW = cw;
-            drawH = cw / imgRatio;
-            drawX = 0;
-            drawY = (ch - drawH) / 2;
-          } else {
-            drawH = ch;
-            drawW = ch * imgRatio;
-            drawX = (cw - drawW) / 2;
-            drawY = 0;
-          }
+        // Foreground: proportionally scaled to be 100% visible with zero cropping of the head or frame
+        let fgW, fgH, fgX, fgY;
+        if (canvasRatio > imgRatio) {
+          fgH = ch;
+          fgW = ch * imgRatio;
+          fgX = (cw - fgW) / 2;
+          fgY = 0;
         } else {
-          if (canvasRatio > imgRatio) {
-            drawH = ch;
-            drawW = ch * imgRatio;
-            drawX = (cw - drawW) / 2;
-            drawY = 0;
-          } else {
-            drawW = cw;
-            drawH = cw / imgRatio;
-            drawX = 0;
-            drawY = 0;
-          }
+          fgW = cw;
+          fgH = cw / imgRatio;
+          fgX = 0;
+          fgY = (ch - fgH) / 2;
         }
 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, drawX, drawY, drawW, drawH);
+
+        // Layer 1: Ambient full-viewport proportionally scaled background layer
+        // Fills the entire screen seamlessly so there are zero black gaps or vertical side strips
+        const bgScale = Math.max(cw / nw, ch / nh);
+        const bgW = Math.ceil(nw * bgScale);
+        const bgH = Math.ceil(nh * bgScale);
+        const bgX = Math.round((cw - bgW) / 2);
+        const bgY = Math.round((ch - bgH) / 2);
+
+        // Draw ambient full-width base layer
+        ctx.drawImage(img, 0, 0, nw, nh, bgX, bgY, bgW, bgH);
+
+        // Soft ambient vignette across the background to ensure rich contrast and silky transition
+        ctx.fillStyle = 'rgba(9, 9, 11, 0.45)';
+        ctx.fillRect(0, 0, cw, ch);
+
+        // Layer 2: Pristine foreground layer preserved 100% proportionally without any cropping, distortion, or head-clipping
+        ctx.drawImage(img, 0, 0, nw, nh, fgX, fgY, fgW, fgH);
+
+        // If the screen is wider than 16:9, apply a smooth soft gradient feather at the left and right gutters for seamless visual continuity
+        if (fgX > 1) {
+          const blendW = Math.min(60, Math.round(fgX * 0.4));
+          const leftFeather = ctx.createLinearGradient(fgX - blendW, 0, fgX + blendW, 0);
+          leftFeather.addColorStop(0, 'rgba(9, 9, 11, 0.35)');
+          leftFeather.addColorStop(0.5, 'rgba(9, 9, 11, 0.15)');
+          leftFeather.addColorStop(1, 'rgba(9, 9, 11, 0)');
+          ctx.fillStyle = leftFeather;
+          ctx.fillRect(fgX - blendW, 0, blendW * 2, ch);
+
+          const rightFeather = ctx.createLinearGradient(fgX + fgW - blendW, 0, fgX + fgW + blendW, 0);
+          rightFeather.addColorStop(0, 'rgba(9, 9, 11, 0)');
+          rightFeather.addColorStop(0.5, 'rgba(9, 9, 11, 0.15)');
+          rightFeather.addColorStop(1, 'rgba(9, 9, 11, 0.35)');
+          ctx.fillStyle = rightFeather;
+          ctx.fillRect(fgX + fgW - blendW, 0, blendW * 2, ch);
+        }
+
+        // Seamlessly remove 'Veo' watermark from bottom-right corner
+        const drawW = fgW;
+        const drawH = fgH;
+        const drawX = fgX;
+        const drawY = fgY;
+        const scaleX = drawW / 1280;
+        const scaleY = drawH / 720;
+        const veoW = Math.ceil(185 * scaleX);
+        const veoH = Math.ceil(92 * scaleY);
+        const veoX = drawX + drawW - veoW;
+        const veoY = drawY + drawH - veoH;
+
+        if (veoW > 0 && veoH > 0 && veoX < cw && veoY < ch) {
+          ctx.save();
+          // Sample the clean background strip immediately above the watermark
+          const sampleH = Math.max(12, Math.round(18 * scaleY));
+          const sampleY = Math.max(drawY, veoY - sampleH - 2);
+
+          // Render clean sampled slice with vertical stretch and edge gradient blending
+          ctx.beginPath();
+          ctx.rect(veoX, veoY, veoW, veoH);
+          ctx.clip();
+
+          // Draw the sampled background slice over the watermark
+          ctx.drawImage(
+            canvas,
+            veoX, sampleY, veoW, sampleH,
+            veoX, veoY, veoW, veoH
+          );
+
+          // Apply subtle radial/linear fade for completely natural borderless transition
+          const blendGrad = ctx.createLinearGradient(veoX, veoY, veoX, veoY + veoH);
+          blendGrad.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+          blendGrad.addColorStop(0.3, 'rgba(0, 0, 0, 0.1)');
+          blendGrad.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+          ctx.fillStyle = blendGrad;
+          ctx.fillRect(veoX, veoY, veoW, veoH);
+
+          ctx.restore();
+        }
+
         lastDrawnFrame = frameIdx;
       }
 
