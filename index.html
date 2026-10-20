@@ -2375,64 +2375,27 @@
         const imgRatio = nw / nh;
         const canvasRatio = cw / ch;
 
-        // Foreground: proportionally scaled to be 100% visible with zero cropping of the head or frame
-        let fgW, fgH, fgX, fgY;
-        if (canvasRatio > imgRatio) {
-          fgH = ch;
-          fgW = ch * imgRatio;
-          fgX = (cw - fgW) / 2;
-          fgY = 0;
-        } else {
-          fgW = cw;
-          fgH = cw / imgRatio;
-          fgX = 0;
-          fgY = (ch - fgH) / 2;
-        }
+        // Cover rendering: scale proportionally to fill the full viewport seamlessly with zero letterboxing
+        const scale = Math.max(cw / nw, ch / nh);
+        const drawW = Math.ceil(nw * scale);
+        const drawH = Math.ceil(nh * scale);
+        const drawX = Math.round((cw - drawW) / 2);
+        const drawY = Math.round((ch - drawH) / 2);
 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        // Layer 1: Ambient full-viewport proportionally scaled background layer
-        // Fills the entire screen seamlessly so there are zero black gaps or vertical side strips
-        const bgScale = Math.max(cw / nw, ch / nh);
-        const bgW = Math.ceil(nw * bgScale);
-        const bgH = Math.ceil(nh * bgScale);
-        const bgX = Math.round((cw - bgW) / 2);
-        const bgY = Math.round((ch - bgH) / 2);
+        // Clear canvas before drawing
+        ctx.clearRect(0, 0, cw, ch);
 
-        // Draw ambient full-width base layer
-        ctx.drawImage(img, 0, 0, nw, nh, bgX, bgY, bgW, bgH);
+        // Draw the video frame seamlessly filling the viewport
+        ctx.drawImage(img, 0, 0, nw, nh, drawX, drawY, drawW, drawH);
 
-        // Soft ambient vignette across the background to ensure rich contrast and silky transition
-        ctx.fillStyle = 'rgba(9, 9, 11, 0.45)';
+        // Subtle dark overlay to ensure readability of text across all sections
+        ctx.fillStyle = 'rgba(9, 9, 11, 0.35)';
         ctx.fillRect(0, 0, cw, ch);
 
-        // Layer 2: Pristine foreground layer preserved 100% proportionally without any cropping, distortion, or head-clipping
-        ctx.drawImage(img, 0, 0, nw, nh, fgX, fgY, fgW, fgH);
-
-        // If the screen is wider than 16:9, apply a smooth soft gradient feather at the left and right gutters for seamless visual continuity
-        if (fgX > 1) {
-          const blendW = Math.min(60, Math.round(fgX * 0.4));
-          const leftFeather = ctx.createLinearGradient(fgX - blendW, 0, fgX + blendW, 0);
-          leftFeather.addColorStop(0, 'rgba(9, 9, 11, 0.35)');
-          leftFeather.addColorStop(0.5, 'rgba(9, 9, 11, 0.15)');
-          leftFeather.addColorStop(1, 'rgba(9, 9, 11, 0)');
-          ctx.fillStyle = leftFeather;
-          ctx.fillRect(fgX - blendW, 0, blendW * 2, ch);
-
-          const rightFeather = ctx.createLinearGradient(fgX + fgW - blendW, 0, fgX + fgW + blendW, 0);
-          rightFeather.addColorStop(0, 'rgba(9, 9, 11, 0)');
-          rightFeather.addColorStop(0.5, 'rgba(9, 9, 11, 0.15)');
-          rightFeather.addColorStop(1, 'rgba(9, 9, 11, 0.35)');
-          ctx.fillStyle = rightFeather;
-          ctx.fillRect(fgX + fgW - blendW, 0, blendW * 2, ch);
-        }
-
         // Seamlessly remove 'Veo' watermark from bottom-right corner
-        const drawW = fgW;
-        const drawH = fgH;
-        const drawX = fgX;
-        const drawY = fgY;
         const scaleX = drawW / 1280;
         const scaleY = drawH / 720;
         const veoW = Math.ceil(185 * scaleX);
